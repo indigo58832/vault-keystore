@@ -11,4 +11,4 @@ if [ -n "$WID" ]; then
 fi
 
 # Не запущено — стартуем
-exec /home/smuzi/Applications/work_tool/keystore/start.sh
+exec "$(dirname "$(readlink -f "$0")")/start.sh"
