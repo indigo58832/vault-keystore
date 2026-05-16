@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.Python
+*.egg-info/
+build/
+dist/
+
+# Логи и БД
+*.log
+*.db
+*.db.backup*
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vault state
+~/.local/share/keystore/
+auto_check.state.json
+auto_check.log
+
+# Локальные секреты
+cidms_key.txt
+*.env
+.env
+
+# Сборка
+*.spec
+
+# winkeycheck — публичный форк, клонируется отдельно (см. README)
+winkeycheck/
+
+# Сторонние папки (если нужны другие проекты в work_tool — не пушить)
+my_store/
+PIDChecker_*/
+обзор активаторов/
+ggsel_*/
+generator_key/
+key_scraper/
+.claude/
+.codex/
+.agents/
+.apply_task_projects.yaml
+
+# Прочее
+*.zip
+*.tar.gz
