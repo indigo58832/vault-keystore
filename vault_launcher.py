@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 import threading
 import time
 
 import requests
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "keystore"))
 
 from keystore.app import main as vault_main
 from keystore.quick_check import main as quick_check_main
