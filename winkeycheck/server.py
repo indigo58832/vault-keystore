@@ -14,7 +14,7 @@
     JSON с полями: ok, edition, description, type_label, is_mak, mak_count,
                    online_ok, online_code, online_human, ...
 """
-import sys, os, json, argparse, threading
+import sys, os, json, argparse, threading, traceback
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +27,15 @@ print(f"Loaded {len(PKCS)} pkeyconfigs.", file=sys.stderr)
 
 # Wine + pidgenx должен быть глобально сериализован — нельзя параллельно вызывать
 WINE_LOCK = threading.Lock()
+ERROR_LOG = os.path.join(os.path.expanduser("~"), "vault_server_error.log")
+
+
+def log_error_text(text: str):
+    try:
+        with open(ERROR_LOG, "a", encoding="utf-8") as f:
+            f.write(text + "\n\n")
+    except Exception:
+        pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,40 +63,51 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        if self.path.startswith("/health"):
-            return self._json(200, {"ok": True, "pkeyconfigs_loaded": len(PKCS)})
-        return self._json(404, {"error": "use POST /check"})
+        try:
+            if self.path.startswith("/health"):
+                return self._json(200, {"ok": True, "pkeyconfigs_loaded": len(PKCS)})
+            return self._json(404, {"error": "use POST /check"})
+        except BaseException:
+            tb = traceback.format_exc()
+            log_error_text(tb)
+            return self._json(500, {"error": tb[-1500:]})
 
     def do_POST(self):
-        if not self.path.startswith("/check"):
-            return self._json(404, {"error": "use POST /check"})
-
-        length = int(self.headers.get("Content-Length") or 0)
         try:
-            raw = self.rfile.read(length).decode("utf-8") if length else "{}"
-            req = json.loads(raw) if raw.strip() else {}
-        except Exception as e:
-            return self._json(400, {"error": f"bad JSON: {e}"})
+            if not self.path.startswith("/check"):
+                return self._json(404, {"error": "use POST /check"})
 
-        key = (req.get("key") or "").strip()
-        if not key:
-            return self._json(400, {"error": "field 'key' required"})
-
-        opts = dict(
-            do_online=req.get("online", True),
-            do_consume=req.get("consume", False),
-            do_mak_count=req.get("mak_count", True),
-            allow_consume_retail=req.get("allow_consume_retail", False),
-        )
-
-        # Сериализуем wine-вызовы между потоками
-        with WINE_LOCK:
+            length = int(self.headers.get("Content-Length") or 0)
             try:
-                result = check_key(key, pkcs=PKCS, **opts)
+                raw = self.rfile.read(length).decode("utf-8") if length else "{}"
+                req = json.loads(raw) if raw.strip() else {}
             except Exception as e:
-                return self._json(500, {"error": f"check failed: {e}"})
+                return self._json(400, {"error": f"bad JSON: {e}"})
 
-        return self._json(200, result)
+            key = (req.get("key") or "").strip()
+            if not key:
+                return self._json(400, {"error": "field 'key' required"})
+
+            opts = dict(
+                do_online=req.get("online", True),
+                do_consume=req.get("consume", False),
+                do_mak_count=req.get("mak_count", True),
+                allow_consume_retail=req.get("allow_consume_retail", False),
+            )
+
+            with WINE_LOCK:
+                try:
+                    result = check_key(key, pkcs=PKCS, **opts)
+                except Exception as e:
+                    tb = traceback.format_exc()
+                    log_error_text(tb)
+                    return self._json(500, {"error": f"check failed: {e}", "traceback": tb[-1500:]})
+
+            return self._json(200, result)
+        except BaseException:
+            tb = traceback.format_exc()
+            log_error_text(tb)
+            return self._json(500, {"error": tb[-1500:]})
 
 
 def create_server(bind: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
