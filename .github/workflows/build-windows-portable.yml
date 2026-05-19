@@ -1,0 +1,66 @@
+name: Build Windows portable
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller PyQt6 requests pynput urllib3
+
+      - name: Build Vault.exe
+        shell: bash
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --onedir \
+            --name Vault \
+            --paths keystore \
+            --hidden-import pynput.keyboard._win32 \
+            --hidden-import pynput.mouse._win32 \
+            --add-data "keystore/icons;icons" \
+            keystore/keystore/__main__.py
+
+      - name: Build KeyCheckerServer.exe
+        shell: bash
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --console \
+            --onedir \
+            --name KeyCheckerServer \
+            --add-data "winkeycheck/pidgenx;pidgenx" \
+            --add-data "winkeycheck/licensing_stuff;licensing_stuff" \
+            --add-data "winkeycheck/pkeyconfig.xrm-ms;." \
+            winkeycheck/server.py
+
+      - name: Assemble portable bundle
+        shell: bash
+        run: |
+          mkdir -p out/VaultPortable
+          cp -r dist/Vault out/VaultPortable/
+          cp -r dist/KeyCheckerServer out/VaultPortable/
+          cp packaging/windows/*.bat out/VaultPortable/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VaultPortable-windows
+          path: out/VaultPortable

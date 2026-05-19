@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import os
 import signal
+import subprocess
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QFont, QColor
@@ -33,7 +34,7 @@ class HotkeyBridge(QObject):
     triggered = pyqtSignal()
 
 
-def setup_global_hotkey(bridge: HotkeyBridge, combo: str = "<ctrl>+<alt>+k") -> object | None:
+def setup_global_hotkey(bridge: HotkeyBridge, combo: str = "<ctrl>+<shift>+s") -> object | None:
     """Запускает pynput.GlobalHotKeys в фоне.
     Возвращает listener или None если не получилось.
     """
@@ -59,6 +60,7 @@ def setup_global_hotkey(bridge: HotkeyBridge, combo: str = "<ctrl>+<alt>+k") -> 
 
 import tempfile
 VAULT_PID_FILE = os.path.join(tempfile.gettempdir(), "vault.pid")
+QUICK_CHECK_PID_FILE = os.path.join(tempfile.gettempdir(), "vault_quick_check.pid")
 
 
 def _already_running() -> bool:
@@ -91,6 +93,70 @@ def _remove_pid_file():
         os.unlink(VAULT_PID_FILE)
     except Exception:
         pass
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _read_quick_check_pid() -> int | None:
+    try:
+        with open(QUICK_CHECK_PID_FILE) as f:
+            return int(f.read().strip())
+    except Exception:
+        return None
+
+
+def _write_quick_check_pid(pid: int):
+    try:
+        with open(QUICK_CHECK_PID_FILE, "w") as f:
+            f.write(str(pid))
+    except Exception:
+        pass
+
+
+def _remove_quick_check_pid():
+    try:
+        os.unlink(QUICK_CHECK_PID_FILE)
+    except Exception:
+        pass
+
+
+def toggle_quick_check() -> bool:
+    """Открыть/закрыть окно быстрой проверки отдельным процессом."""
+    old_pid = _read_quick_check_pid()
+    if old_pid and _pid_alive(old_pid):
+        try:
+            os.kill(old_pid, signal.SIGTERM)
+        except OSError:
+            pass
+        _remove_quick_check_pid()
+        return False
+
+    creationflags = 0
+    popen_kwargs: dict = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "stdin": subprocess.DEVNULL,
+        "cwd": _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+    }
+    if os.name == "nt":
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+    else:
+        popen_kwargs["start_new_session"] = True
+
+    if getattr(sys, "frozen", False):
+        cmd = [sys.executable, "--quick-check"]
+    else:
+        cmd = [sys.executable, "-m", "keystore", "--quick-check"]
+
+    proc = subprocess.Popen(cmd, creationflags=creationflags, **popen_kwargs)
+    _write_quick_check_pid(proc.pid)
+    return True
 
 
 def main():
@@ -135,7 +201,7 @@ def main():
 
     # tray
     tray = QSystemTrayIcon(icon)
-    tray.setToolTip("Vault — Ctrl+Alt+K чтобы показать")
+    tray.setToolTip("Vault — Ctrl+Shift+S: быстрая проверка")
     menu = QMenu()
     a_show = QAction("Показать")
     a_show.triggered.connect(show_window)
@@ -186,8 +252,8 @@ def main():
 
     # global hotkey
     bridge = HotkeyBridge()
-    bridge.triggered.connect(show_window)
-    listener = setup_global_hotkey(bridge, "<ctrl>+<alt>+k")
+    bridge.triggered.connect(toggle_quick_check)
+    listener = setup_global_hotkey(bridge, "<ctrl>+<shift>+s")
     if listener is None:
         # tray всё равно работает, hotkey можно настроить в GNOME shortcuts
         tray.showMessage(
