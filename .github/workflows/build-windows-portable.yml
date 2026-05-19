@@ -22,6 +22,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyinstaller PyQt6 requests pynput urllib3
 
+      - name: Download winkeycheck Windows bundle
+        shell: bash
+        run: |
+          curl -L -o windows-bundle.zip https://github.com/indigo58832/vault-keystore/releases/download/winkeycheck-bundle-v1/windows-bundle.zip
+          python - <<'PY'
+          import zipfile
+          zf = zipfile.ZipFile('windows-bundle.zip')
+          zf.extractall('.')
+          PY
+
       - name: Build Vault.exe
         shell: bash
         run: |
@@ -46,10 +56,10 @@ jobs:
             --console \
             --onedir \
             --name KeyCheckerServer \
-            --add-data "winkeycheck/pidgenx;pidgenx" \
-            --add-data "winkeycheck/licensing_stuff;licensing_stuff" \
-            --add-data "winkeycheck/pkeyconfig.xrm-ms;." \
-            winkeycheck/server.py
+            --add-data "windows-bundle/pidgenx;pidgenx" \
+            --add-data "windows-bundle/licensing_stuff;licensing_stuff" \
+            --add-data "windows-bundle/pkeyconfig.xrm-ms;." \
+            windows-bundle/server.py
 
       - name: Assemble portable bundle
         shell: bash
