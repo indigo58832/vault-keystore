@@ -46,23 +46,44 @@ jobs:
             --hidden-import pynput.keyboard._win32 \
             --hidden-import pynput.mouse._win32 \
             --collect-submodules keystore \
-            --collect-submodules winkeycheck \
-            --hidden-import winkeycheck.check \
-            --hidden-import winkeycheck.keycheck \
-            --hidden-import winkeycheck.server \
             --add-data "keystore/icons;icons" \
-            --add-data "winkeycheck/pidgenx;winkeycheck/pidgenx" \
-            --add-data "winkeycheck/licensing_stuff;winkeycheck/licensing_stuff" \
-            --add-data "winkeycheck/pkeyconfig.xrm-ms;winkeycheck" \
-            vault_launcher.py
+            vault_app_entry.py
+
+      - name: Build KeyCheckerServer.exe
+        shell: bash
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --console \
+            --onefile \
+            --name KeyCheckerServer \
+            --paths . \
+            --collect-submodules winkeycheck \
+            --add-data "winkeycheck/pidgenx;pidgenx" \
+            --add-data "winkeycheck/licensing_stuff;licensing_stuff" \
+            --add-data "winkeycheck/pkeyconfig.xrm-ms;." \
+            server_entry.py
+
+      - name: Build VaultLauncher.exe
+        shell: bash
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --onefile \
+            --name VaultLauncher \
+            --icon vault.ico \
+            launcher_entry.py
 
       - name: Assemble portable bundle
         shell: bash
         run: |
           mkdir -p out/VaultPortable
+          cp dist/VaultLauncher.exe out/VaultPortable/
           cp dist/Vault.exe out/VaultPortable/
-          cp packaging/windows/Start\ Vault.bat out/VaultPortable/
-          cp packaging/windows/Stop\ Vault.bat out/VaultPortable/
+          cp dist/KeyCheckerServer.exe out/VaultPortable/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
