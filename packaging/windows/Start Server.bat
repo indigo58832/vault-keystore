@@ -2,4 +2,4 @@
 setlocal
 cd /d "%~dp0"
 
-"%~dp0KeyCheckerServer\KeyCheckerServer.exe" --port 17777
+"%~dp0Vault.exe" --server

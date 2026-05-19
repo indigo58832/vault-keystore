@@ -20,16 +20,15 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyinstaller PyQt6 requests pynput urllib3
+          python -m pip install pyinstaller PyQt6 requests pynput urllib3 pillow
 
-      - name: Download winkeycheck Windows bundle
+      - name: Build app icon
         shell: bash
         run: |
-          curl -L -o windows-bundle.zip https://github.com/indigo58832/vault-keystore/releases/download/winkeycheck-bundle-v1/windows-bundle.zip
           python - <<'PY'
-          import zipfile
-          zf = zipfile.ZipFile('windows-bundle.zip')
-          zf.extractall('.')
+          from PIL import Image
+          img = Image.open("keystore/icons/logos/logo1_v_minimal.png").convert("RGBA")
+          img.save("vault.ico", sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)])
           PY
 
       - name: Build Vault.exe
@@ -39,35 +38,28 @@ jobs:
             --noconfirm \
             --clean \
             --windowed \
-            --onedir \
+            --onefile \
             --name Vault \
-            --paths keystore \
+            --icon vault.ico \
+            --paths . \
             --hidden-import pynput.keyboard._win32 \
             --hidden-import pynput.mouse._win32 \
+            --hidden-import winkeycheck.check \
+            --hidden-import winkeycheck.keycheck \
+            --hidden-import winkeycheck.server \
             --add-data "keystore/icons;icons" \
-            keystore/keystore/__main__.py
-
-      - name: Build KeyCheckerServer.exe
-        shell: bash
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --console \
-            --onedir \
-            --name KeyCheckerServer \
-            --add-data "windows-bundle/pidgenx;pidgenx" \
-            --add-data "windows-bundle/licensing_stuff;licensing_stuff" \
-            --add-data "windows-bundle/pkeyconfig.xrm-ms;." \
-            windows-bundle/server.py
+            --add-data "winkeycheck/pidgenx;winkeycheck/pidgenx" \
+            --add-data "winkeycheck/licensing_stuff;winkeycheck/licensing_stuff" \
+            --add-data "winkeycheck/pkeyconfig.xrm-ms;winkeycheck" \
+            vault_launcher.py
 
       - name: Assemble portable bundle
         shell: bash
         run: |
           mkdir -p out/VaultPortable
-          cp -r dist/Vault out/VaultPortable/
-          cp -r dist/KeyCheckerServer out/VaultPortable/
-          cp packaging/windows/*.bat out/VaultPortable/
+          cp dist/Vault.exe out/VaultPortable/
+          cp packaging/windows/Start\ Vault.bat out/VaultPortable/
+          cp packaging/windows/Stop\ Vault.bat out/VaultPortable/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
