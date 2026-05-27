@@ -5,7 +5,7 @@ import os
 import signal
 import subprocess
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QFont, QColor
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
@@ -26,6 +26,20 @@ def make_tray_icon(size: int = 64) -> QIcon:
     pm = QPixmap(size, size)
     pm.fill(QColor("#1e293b"))
     return QIcon(pm)
+
+
+class ServerBootWorker(QThread):
+    """Старт winkeycheck в фоне — load pkeyconfig нельзя на UI-потоке (минуты)."""
+    finished_boot = pyqtSignal(bool)
+
+    def run(self):
+        ok = boot_checker_server(
+            server_binary=paths.server_binary(),
+            server_dev_script=paths.server_dev_script(),
+            log_file=CHECKER_LOG_FILE,
+            is_frozen=paths.is_frozen(),
+        )
+        self.finished_boot.emit(ok)
 
 
 class HotkeyBridge(QObject):
@@ -347,12 +361,15 @@ def main():
     win.show()
     _log_startup("window shown")
 
-    server_ok: list[bool] = [False]
+    tray.showMessage(
+        "Vault",
+        "Загрузка сервера проверки ключей… обычно 1–2 мин (первый запуск). "
+        "Окно уже можно смотреть.",
+        QSystemTrayIcon.MessageIcon.Information,
+        8000,
+    )
 
-    def _boot_server():
-        _log_startup("server boot begin")
-        ok = ensure_checker_server_running()
-        server_ok[0] = ok
+    def _on_server_boot(ok: bool):
         _log_startup(f"server boot done ok={ok}")
         try:
             from .diagnose import write_report
@@ -362,12 +379,18 @@ def main():
         if not ok:
             tray.showMessage(
                 "Vault",
-                "Сервер проверки ещё грузится или не стартовал. "
-                "Подождите 1–2 мин или откройте Diagnose.bat.",
+                "Сервер проверки не стартовал. Запустите Diagnose.bat в папке с Vault.exe.",
                 QSystemTrayIcon.MessageIcon.Warning,
-                10000,
+                12000,
             )
-        elif paths.is_frozen() and os.path.isfile(paths.server_binary()):
+        else:
+            tray.showMessage(
+                "Vault",
+                "Сервер проверки готов — можно проверять ключи.",
+                QSystemTrayIcon.MessageIcon.Information,
+                5000,
+            )
+        if paths.is_frozen() and os.path.isfile(paths.server_binary()):
             tray.showMessage(
                 "Vault",
                 "Удалите KeyCheckerServer.exe из папки — нужен только Vault.exe.",
@@ -375,8 +398,10 @@ def main():
                 8000,
             )
 
-    # Сначала окно, сервер и pkeyconfig — в фоне (onefile может грузиться долго).
-    QTimer.singleShot(0, _boot_server)
+    boot_worker = ServerBootWorker()
+    boot_worker.finished_boot.connect(_on_server_boot)
+    _log_startup("server boot thread start")
+    boot_worker.start()
 
     sys.exit(app.exec())
 
