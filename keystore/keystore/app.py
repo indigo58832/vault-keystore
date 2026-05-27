@@ -61,6 +61,32 @@ import tempfile
 VAULT_PID_FILE = os.path.join(tempfile.gettempdir(), "vault.pid")
 QUICK_CHECK_PID_FILE = os.path.join(tempfile.gettempdir(), "vault_quick_check.pid")
 CHECKER_LOG_FILE = os.path.join(tempfile.gettempdir(), "winkeycheck.log")
+STARTUP_LOG_FILE = os.path.join(paths.app_dir(), "vault_startup.log")
+
+
+def _log_startup(msg: str) -> None:
+    try:
+        with open(STARTUP_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
+
+
+def _notify_already_running() -> None:
+    text = (
+        "Vault уже запущен.\n\n"
+        "Иконка «V» в трее (у часов) — ПКМ → Показать.\n"
+        "Если окна нет: диспетчер задач → завершить Vault.exe → запустить снова."
+    )
+    _log_startup("exit: already running")
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, text, "Vault", 0x40)
+            return
+        except Exception:
+            pass
+    print(text, file=sys.stderr)
 
 
 def _already_running() -> bool:
@@ -191,23 +217,13 @@ def ensure_checker_server_running() -> bool:
 
 
 def main():
-    # Single-instance: если Vault уже запущен — молча выходим.
-    # Чтобы открыть окно — пользователь использует трей или хоткей.
+    _log_startup("--- start ---")
+
     if _already_running():
-        print(f"[Vault] уже запущен — выхожу. PID-файл: {VAULT_PID_FILE}",
-              file=sys.stderr)
+        _notify_already_running()
         return
 
-    # Ctrl-C в терминале закрывает приложение
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-
-    server_ok = ensure_checker_server_running()
-
-    try:
-        from .diagnose import write_report
-        write_report()
-    except Exception:
-        pass
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # окно можно закрыть, программа жива в трее
@@ -283,6 +299,24 @@ def main():
     a_check_now = QAction("Проверить сейчас")
     a_check_now.triggered.connect(start_auto_check)
     menu.addAction(a_check_now)
+
+    def run_diagnose_ui():
+        try:
+            from .diagnose import write_report, report_paths
+            write_report(load_local_pkcs=True)
+            paths_txt = "\n".join(report_paths())
+            QMessageBox.information(
+                win,
+                "Диагностика",
+                f"Файлы в папке с Vault.exe:\n{paths_txt}\n\n"
+                f"Также: vault_startup.log",
+            )
+        except Exception as e:
+            QMessageBox.warning(win, "Диагностика", str(e))
+
+    a_diag = QAction("Диагностика…")
+    a_diag.triggered.connect(run_diagnose_ui)
+    menu.addAction(a_diag)
     menu.addSeparator()
 
     a_quit = QAction("Выйти")
@@ -291,23 +325,6 @@ def main():
     tray.setContextMenu(menu)
     tray.activated.connect(lambda reason: show_window() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
     tray.show()
-
-    if not server_ok:
-        tray.showMessage(
-            "Vault",
-            "Сервер проверки ключей не запустился (:17777). "
-            "Проверка и Quick Check работать не будут.",
-            QSystemTrayIcon.MessageIcon.Critical,
-            8000,
-        )
-    elif paths.is_frozen() and os.path.isfile(paths.server_binary()):
-        tray.showMessage(
-            "Vault",
-            "Рядом лежит старый KeyCheckerServer.exe — удалите его. "
-            "Нужен только Vault.exe, иначе проверка может не работать.",
-            QSystemTrayIcon.MessageIcon.Warning,
-            10000,
-        )
 
     # global hotkey
     bridge = HotkeyBridge()
@@ -328,6 +345,39 @@ def main():
     QTimer.singleShot(delay_ms, start_auto_check)
 
     win.show()
+    _log_startup("window shown")
+
+    server_ok: list[bool] = [False]
+
+    def _boot_server():
+        _log_startup("server boot begin")
+        ok = ensure_checker_server_running()
+        server_ok[0] = ok
+        _log_startup(f"server boot done ok={ok}")
+        try:
+            from .diagnose import write_report
+            write_report(load_local_pkcs=False)
+        except Exception as e:
+            _log_startup(f"diagnose skip: {e}")
+        if not ok:
+            tray.showMessage(
+                "Vault",
+                "Сервер проверки ещё грузится или не стартовал. "
+                "Подождите 1–2 мин или откройте Diagnose.bat.",
+                QSystemTrayIcon.MessageIcon.Warning,
+                10000,
+            )
+        elif paths.is_frozen() and os.path.isfile(paths.server_binary()):
+            tray.showMessage(
+                "Vault",
+                "Удалите KeyCheckerServer.exe из папки — нужен только Vault.exe.",
+                QSystemTrayIcon.MessageIcon.Warning,
+                8000,
+            )
+
+    # Сначала окно, сервер и pkeyconfig — в фоне (onefile может грузиться долго).
+    QTimer.singleShot(0, _boot_server)
+
     sys.exit(app.exec())
 
 

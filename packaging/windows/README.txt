@@ -1,29 +1,35 @@
 Vault для Windows — один файл
 ===============================
 
-Запускайте ТОЛЬКО Vault.exe (двойной клик).
+Запуск: двойной клик Vault.exe
 
-Внутри уже есть:
-  - интерфейс склада ключей
-  - сервер проверки ключей (localhost:17777)
+В папке должны быть:
+  Vault.exe
+  Diagnose.bat   (если что-то не работает)
+  README.txt
 
-НЕ кладите рядом старые файлы:
+НЕ кладите рядом:
   KeyCheckerServer.exe
   VaultLauncher.exe
-Они мешают — Vault подключится к пустому серверу.
+
+Если «не открывается»:
+  1. Диспетчер задач — завершить все Vault.exe
+  2. Снова Vault.exe — подождите до 2 минут (первый запуск распаковывается)
+  3. Иконка V в трее у часов — ПКМ → Показать
+  4. Если пишет «уже запущен» — смотрите трей, не запускайте второй раз
+
+Диагностика (простой путь):
+  Двойной клик Diagnose.bat
+  В ТОЙ ЖЕ папке появятся:
+    vault_diagnose_output.txt
+    vault_diagnose.json
+  Откройте и пришлите vault_diagnose_output.txt
+
+Также после запуска Vault:
+    vault_startup.log  (в этой же папке)
 
 База ключей:
   C:\Users\<имя>\.local\share\keystore\keys.db
 
-С Linux скопируйте keys.db в эту папку (создайте каталог keystore если нет).
-
-Quick Check: Ctrl+Shift+S (или Ctrl+C + hotkey).
-
-Если пишет «pkeyconfig» или «0 конфигов»:
-  1. Закройте Vault и KeyCheckerServer в диспетчере задач
-  2. Удалите KeyCheckerServer.exe из папки (оставьте только Vault.exe)
-  3. Запустите Vault.exe снова, подождите 30 сек
-  4. Индикатор «сервер» внизу должен быть зелёным
-
-Скачивайте сборку из GitHub Actions (артефакт VaultPortable-windows),
-не старый zip от 19 мая.
+Сборка: GitHub Actions → VaultPortable-windows (не zip от 19 мая).
+В заголовке окна: Vault [номер-сборки] — без номера = старый exe.

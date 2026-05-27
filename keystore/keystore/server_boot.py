@@ -51,7 +51,10 @@ def _free_port(port: int) -> None:
                 parts = line.split()
                 if parts and parts[-1].isdigit():
                     pids.add(parts[-1])
+            my_pid = str(os.getpid())
             for pid in pids:
+                if pid == my_pid:
+                    continue
                 subprocess.run(
                     ["taskkill", "/F", "/PID", pid],
                     capture_output=True,
@@ -87,7 +90,8 @@ def start_embedded_server(port: int = CHECKER_PORT) -> bool:
         thread = threading.Thread(target=srv.serve_forever, daemon=True, name="winkeycheck")
         thread.start()
         _embedded_http_server = srv
-    timeout = 120.0 if getattr(sys, "frozen", False) else 30.0
+    # Первая загрузка pkeyconfig в onefile может занять 1–2 мин — не блокируем GUI так долго.
+    timeout = 180.0 if getattr(sys, "frozen", False) else 30.0
     return _wait_ready(timeout)
 
 
