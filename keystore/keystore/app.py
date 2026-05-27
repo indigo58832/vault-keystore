@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 from .main_window import MainWindow
 from . import auto_check
 from . import paths
-from .server_boot import ensure_checker_server_running as boot_checker_server, set_boot_log
+from .server_boot import ensure_checker_server_running as boot_checker_server
 
 
 ICON_PATH = paths.icon_path()
@@ -28,17 +28,13 @@ def make_tray_icon(size: int = 64) -> QIcon:
     return QIcon(pm)
 
 
-class ServerBootWorker(QThread):
-    """Старт winkeycheck в фоне — load pkeyconfig нельзя на UI-потоке (минуты)."""
+class PkcsPreloadWorker(QThread):
+    """Фоновая загрузка pkeyconfig (только direct-режим Windows)."""
     finished_boot = pyqtSignal(bool)
 
     def run(self):
-        ok = boot_checker_server(
-            server_binary=paths.server_binary(),
-            server_dev_script=paths.server_dev_script(),
-            log_file=CHECKER_LOG_FILE,
-            is_frozen=paths.is_frozen(),
-        )
+        from . import direct_check
+        ok = direct_check.ensure_loaded()
         self.finished_boot.emit(ok)
 
 
@@ -222,6 +218,10 @@ def toggle_quick_check() -> bool:
 
 
 def ensure_checker_server_running() -> bool:
+    if paths.use_direct_check():
+        from . import direct_check
+        direct_check.warmup_async()
+        return True
     return boot_checker_server(
         server_binary=paths.server_binary(),
         server_dev_script=paths.server_dev_script(),
@@ -238,7 +238,7 @@ def main():
         return
 
     _write_pid_file()
-    set_boot_log(STARTUP_LOG_FILE)
+    _log_startup(f"direct_check={paths.use_direct_check()}")
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -363,47 +363,61 @@ def main():
     win.show()
     _log_startup("window shown")
 
-    tray.showMessage(
-        "Vault",
-        "Загрузка сервера проверки ключей… обычно 1–2 мин (первый запуск). "
-        "Окно уже можно смотреть.",
-        QSystemTrayIcon.MessageIcon.Information,
-        8000,
-    )
-
-    def _on_server_boot(ok: bool):
-        _log_startup(f"server boot done ok={ok}")
-        try:
-            from .diagnose import write_report
-            write_report(load_local_pkcs=False)
-        except Exception as e:
-            _log_startup(f"diagnose skip: {e}")
+    def _on_checker_ready(ok: bool):
+        _log_startup(f"checker ready ok={ok}")
+        if paths.use_direct_check():
+            if ok:
+                tray.showMessage(
+                    "Vault",
+                    "Проверка ключей готова (встроенная, без сервера).",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            else:
+                tray.showMessage(
+                    "Vault",
+                    "Не загрузились pkeyconfig. Запустите Diagnose.bat.",
+                    QSystemTrayIcon.MessageIcon.Warning,
+                    10000,
+                )
+            return
         if not ok:
             tray.showMessage(
                 "Vault",
-                "Сервер проверки не стартовал. Запустите Diagnose.bat в папке с Vault.exe.",
+                "Сервер проверки не стартовал (:17777).",
                 QSystemTrayIcon.MessageIcon.Warning,
-                12000,
-            )
-        else:
-            tray.showMessage(
-                "Vault",
-                "Сервер проверки готов — можно проверять ключи.",
-                QSystemTrayIcon.MessageIcon.Information,
-                5000,
-            )
-        if paths.is_frozen() and os.path.isfile(paths.server_binary()):
-            tray.showMessage(
-                "Vault",
-                "Удалите KeyCheckerServer.exe из папки — нужен только Vault.exe.",
-                QSystemTrayIcon.MessageIcon.Warning,
-                8000,
+                10000,
             )
 
-    boot_worker = ServerBootWorker()
-    boot_worker.finished_boot.connect(_on_server_boot)
-    _log_startup("server boot thread start")
-    boot_worker.start()
+    if paths.use_direct_check():
+        tray.showMessage(
+            "Vault",
+            "Загрузка базы ключей в фоне… окно уже работает.",
+            QSystemTrayIcon.MessageIcon.Information,
+            5000,
+        )
+        preload = PkcsPreloadWorker()
+        preload.finished_boot.connect(_on_checker_ready)
+        preload.start()
+    else:
+        from .server_boot import set_boot_log
+        set_boot_log(STARTUP_LOG_FILE)
+
+        class ServerBootWorker(QThread):
+            finished_boot = pyqtSignal(bool)
+
+            def run(self):
+                ok = boot_checker_server(
+                    server_binary=paths.server_binary(),
+                    server_dev_script=paths.server_dev_script(),
+                    log_file=CHECKER_LOG_FILE,
+                    is_frozen=paths.is_frozen(),
+                )
+                self.finished_boot.emit(ok)
+
+        boot = ServerBootWorker()
+        boot.finished_boot.connect(_on_checker_ready)
+        boot.start()
 
     sys.exit(app.exec())
 

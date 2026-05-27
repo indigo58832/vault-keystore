@@ -1,35 +1,21 @@
-Vault для Windows — один файл
-===============================
+Vault для Windows
+=================
 
-Запуск: двойной клик Vault.exe
+Запуск: двойной клик Vault.exe (или Start Vault.bat)
 
-В папке должны быть:
-  Vault.exe
-  Diagnose.bat   (если что-то не работает)
-  README.txt
+НОВЫЙ ПОДХОД (2026-05):
+  - проверка ключей ВНУТРИ Vault.exe
+  - без сервера localhost:17777
+  - без KeyCheckerServer.exe
 
-НЕ кладите рядом:
-  KeyCheckerServer.exe
-  VaultLauncher.exe
+В папке лежит каталог Vault/ — не удаляйте файлы рядом с exe.
 
-Если «не открывается»:
-  1. Диспетчер задач — завершить все Vault.exe
-  2. Снова Vault.exe — подождите до 2 минут (первый запуск распаковывается)
-  3. Иконка V в трее у часов — ПКМ → Показать
-  4. Если пишет «уже запущен» — смотрите трей, не запускайте второй раз
+Первый запуск: подождите ~1 мин (загрузка базы ключей в фоне).
+Внизу окна: зелёная «● проверка» = можно проверять.
 
-Диагностика (простой путь):
-  Двойной клик Diagnose.bat
-  В ТОЙ ЖЕ папке появятся:
-    vault_diagnose_output.txt
-    vault_diagnose.json
-  Откройте и пришлите vault_diagnose_output.txt
+Диагностика: Diagnose.bat → vault_diagnose_output.txt в этой папке.
 
-Также после запуска Vault:
-    vault_startup.log  (в этой же папке)
-
-База ключей:
+База keys.db:
   C:\Users\<имя>\.local\share\keystore\keys.db
 
-Сборка: GitHub Actions → VaultPortable-windows (не zip от 19 мая).
-В заголовке окна: Vault [номер-сборки] — без номера = старый exe.
+С Linux: скопируйте keys.db в эту папку.

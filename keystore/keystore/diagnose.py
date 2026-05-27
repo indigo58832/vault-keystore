@@ -48,6 +48,7 @@ def collect(*, load_local_pkcs: bool = True) -> dict:
 
     return {
         "build_id": paths.build_id(),
+        "direct_check": paths.use_direct_check(),
         "frozen": paths.is_frozen(),
         "platform": sys.platform,
         "executable": sys.executable,
@@ -82,14 +83,19 @@ def write_report(*, load_local_pkcs: bool = False) -> str:
 def run_cli() -> int:
     import tempfile
 
-    from .server_boot import ensure_checker_server_running
+    if paths.use_direct_check():
+        from . import direct_check
+        direct_check.ensure_loaded()
+    else:
+        from .server_boot import ensure_checker_server_running
+        import tempfile
 
-    ensure_checker_server_running(
-        server_binary=paths.server_binary(),
-        server_dev_script=paths.server_dev_script(),
-        log_file=os.path.join(tempfile.gettempdir(), "winkeycheck.log"),
-        is_frozen=paths.is_frozen(),
-    )
+        ensure_checker_server_running(
+            server_binary=paths.server_binary(),
+            server_dev_script=paths.server_dev_script(),
+            log_file=os.path.join(tempfile.gettempdir(), "winkeycheck.log"),
+            is_frozen=paths.is_frozen(),
+        )
     path = write_report(load_local_pkcs=True)
     data = collect(load_local_pkcs=False)
 

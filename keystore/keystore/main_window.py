@@ -976,10 +976,17 @@ class MainWindow(QMainWindow):
         info = self.client.health_info()
         ok = bool(info and info.get("ok"))
         n = int((info or {}).get("pkeyconfigs_loaded") or 0)
+        mode = (info or {}).get("mode") or "http"
         if ok:
             self.server_dot.setStyleSheet("color: #4ade80;")
-            self.server_dot.setText("● сервер")
-            self.server_dot.setToolTip(f"Сервер winkeycheck на связи ({n} pkeyconfig)")
+            label = "● проверка" if mode == "direct" else "● сервер"
+            self.server_dot.setText(label)
+            tip = (
+                f"Встроенная проверка ({n} pkeyconfig)"
+                if mode == "direct"
+                else f"Сервер winkeycheck на связи ({n} pkeyconfig)"
+            )
+            self.server_dot.setToolTip(tip)
         elif info is not None and n == 0:
             self.server_dot.setStyleSheet("color: #fbbf24;")
             self.server_dot.setText("● сервер")

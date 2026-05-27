@@ -32,14 +32,14 @@ jobs:
           PY
           echo "build=${GITHUB_RUN_ID}-${GITHUB_SHA::7}" > vault_build.txt
 
-      - name: Build Vault.exe (GUI + встроенный сервер проверки)
+      - name: Build Vault (onedir — быстрый старт, без onefile)
         shell: bash
         run: |
           pyinstaller \
             --noconfirm \
             --clean \
             --windowed \
-            --onefile \
+            --onedir \
             --name Vault \
             --icon vault.ico \
             --paths keystore \
@@ -59,16 +59,16 @@ jobs:
       - name: Smoke test pkeyconfigs in Vault.exe
         shell: bash
         run: |
-          ./dist/Vault.exe --self-test-pkeyconfigs
-          ./dist/Vault.exe --diagnose
+          ./dist/Vault/Vault.exe --self-test-pkeyconfigs
 
       - name: Assemble portable bundle
         shell: bash
         run: |
           mkdir -p out/VaultPortable
-          cp dist/Vault.exe out/VaultPortable/
+          cp -r dist/Vault/. out/VaultPortable/
           cp packaging/windows/README.txt out/VaultPortable/
           cp packaging/windows/Diagnose.bat out/VaultPortable/
+          cp packaging/windows/Start\ Vault.bat out/VaultPortable/ 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

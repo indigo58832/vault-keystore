@@ -9,6 +9,15 @@ def is_frozen() -> bool:
     return getattr(sys, "frozen", False)
 
 
+def use_direct_check() -> bool:
+    """Windows portable: проверка в процессе, без localhost:17777."""
+    if os.environ.get("VAULT_USE_HTTP_SERVER", "").lower() in ("1", "true", "yes"):
+        return False
+    if os.environ.get("VAULT_DIRECT_CHECK", "").lower() in ("0", "false", "no"):
+        return False
+    return is_frozen() and os.name == "nt"
+
+
 def app_dir() -> str:
     """Каталог portable-сборки (рядом лежат Vault и KeyCheckerServer)."""
     if is_frozen():
