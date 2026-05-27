@@ -849,9 +849,20 @@ class MainWindow(QMainWindow):
         Иначе сервер защитит дорогие онлайн-активации.
         """
         if not self.client.health():
-            QMessageBox.warning(self, "Сервер недоступен",
-                                "Сервер winkeycheck не отвечает на 127.0.0.1:17777")
-            return
+            self.status.showMessage("Жду сервер проверки (до 2 мин)…", 0)
+            QApplication.processEvents()
+            info = self.client.wait_until_ready(120.0)
+            if not info:
+                QMessageBox.warning(
+                    self,
+                    "Сервер недоступен",
+                    "Сервер winkeycheck не отвечает на 127.0.0.1:17777.\n\n"
+                    "Подождите 1–2 мин после запуска Vault или запустите Diagnose.bat "
+                    "в папке с Vault.exe.\n"
+                    "Не запускайте Vault дважды подряд.",
+                )
+                return
+            self._poll_server()
         self._set_buttons_enabled(False)
         # Пользователь сам решает что проверять (Consume-галочка),
         # никаких автоматических защит по «фразам в имени категории».

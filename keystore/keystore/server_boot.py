@@ -13,6 +13,22 @@ CHECKER_PORT = 17777
 
 _embedded_http_server = None
 _embedded_lock = threading.Lock()
+_boot_log_path: str | None = None
+
+
+def set_boot_log(path: str | None) -> None:
+    global _boot_log_path
+    _boot_log_path = path
+
+
+def _boot_log(msg: str) -> None:
+    if not _boot_log_path:
+        return
+    try:
+        with open(_boot_log_path, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
 
 def _server_ready() -> tuple[bool, dict | None]:
@@ -33,8 +49,41 @@ def _wait_ready(timeout_sec: float) -> bool:
     return False
 
 
+def _windows_image_name(pid: str) -> str:
+    try:
+        r = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        line = (r.stdout or "").strip()
+        if not line or "No tasks" in line:
+            return ""
+        return line.split(",")[0].strip('"').lower()
+    except Exception:
+        return ""
+
+
+def _should_kill_listener_pid(pid: str) -> bool:
+    if pid == str(os.getpid()):
+        return False
+    if os.name == "nt":
+        image = _windows_image_name(pid)
+        if not image:
+            return False
+        # Никогда не убивать Vault.exe — иначе второй запуск ломает первый.
+        if image == "vault.exe":
+            return False
+        if "keycheckerserver" in image:
+            return True
+        return False
+    return True
+
+
 def _free_port(port: int) -> None:
-    """Освободить порт от старого KeyCheckerServer / зависшего Vault."""
+    """Освободить порт только от старого KeyCheckerServer (не от Vault.exe)."""
     if os.name == "nt":
         try:
             r = subprocess.run(
@@ -51,18 +100,19 @@ def _free_port(port: int) -> None:
                 parts = line.split()
                 if parts and parts[-1].isdigit():
                     pids.add(parts[-1])
-            my_pid = str(os.getpid())
             for pid in pids:
-                if pid == my_pid:
+                if not _should_kill_listener_pid(pid):
+                    _boot_log(f"free_port: skip pid={pid} image={_windows_image_name(pid)}")
                     continue
+                _boot_log(f"free_port: kill pid={pid} image={_windows_image_name(pid)}")
                 subprocess.run(
                     ["taskkill", "/F", "/PID", pid],
                     capture_output=True,
                     timeout=10,
                     creationflags=subprocess.CREATE_NO_WINDOW,
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            _boot_log(f"free_port error: {e}")
         return
 
     for cmd in (
@@ -84,20 +134,27 @@ def start_embedded_server(port: int = CHECKER_PORT) -> bool:
             return _server_ready()[0]
         try:
             from winkeycheck.server import create_server, get_pkcs
-        except ImportError:
+        except ImportError as e:
+            _boot_log(f"embedded import error: {e}")
             return False
-        # Прогрев pkeyconfig в этом процессе до HTTP (см. create_server).
         try:
-            get_pkcs()
-        except Exception:
-            pass
-        srv = create_server("127.0.0.1", port)
+            n = len(get_pkcs())
+            _boot_log(f"embedded pkcs preloaded: {n}")
+        except Exception as e:
+            _boot_log(f"embedded pkcs preload error: {e}")
+            return False
+        try:
+            srv = create_server("127.0.0.1", port)
+        except Exception as e:
+            _boot_log(f"embedded bind error: {e}")
+            return False
         thread = threading.Thread(target=srv.serve_forever, daemon=True, name="winkeycheck")
         thread.start()
         _embedded_http_server = srv
-    # Первая загрузка pkeyconfig в onefile может занять 1–2 мин — не блокируем GUI так долго.
     timeout = 180.0 if getattr(sys, "frozen", False) else 30.0
-    return _wait_ready(timeout)
+    ok = _wait_ready(timeout)
+    _boot_log(f"embedded wait_ready {timeout}s -> {ok}")
+    return ok
 
 
 def start_external_server(
@@ -138,18 +195,20 @@ def ensure_checker_server_running(
     is_frozen: bool,
 ) -> bool:
     """Сервер на :17777 с загруженными pkeyconfig (не пустой health)."""
-    ready, _ = _server_ready()
+    ready, info = _server_ready()
     if ready:
+        _boot_log(f"server already ready: {info}")
         return True
 
-    # Старый KeyCheckerServer на порту без pkeyconfig — убрать и поднять заново.
+    _boot_log("server not ready, trying boot...")
     _free_port(CHECKER_PORT)
 
     timeout = 45.0 if is_frozen else 12.0
 
-    # Portable Windows: только встроенный сервер (данные внутри Vault.exe).
     if is_frozen:
-        return start_embedded_server(CHECKER_PORT)
+        ok = start_embedded_server(CHECKER_PORT)
+        _boot_log(f"ensure frozen embedded -> {ok}")
+        return ok
 
     if os.path.isfile(server_binary):
         if start_external_server(

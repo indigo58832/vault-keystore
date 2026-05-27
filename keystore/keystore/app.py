@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 from .main_window import MainWindow
 from . import auto_check
 from . import paths
-from .server_boot import ensure_checker_server_running as boot_checker_server
+from .server_boot import ensure_checker_server_running as boot_checker_server, set_boot_log
 
 
 ICON_PATH = paths.icon_path()
@@ -237,6 +237,9 @@ def main():
         _notify_already_running()
         return
 
+    _write_pid_file()
+    set_boot_log(STARTUP_LOG_FILE)
+
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     app = QApplication(sys.argv)
@@ -248,7 +251,6 @@ def main():
     app.setApplicationDisplayName("Vault")
     app.setDesktopFileName("keystore")  # имя .desktop без расширения
 
-    _write_pid_file()
     app.aboutToQuit.connect(_remove_pid_file)
 
     icon = make_tray_icon()
