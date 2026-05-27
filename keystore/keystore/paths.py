@@ -48,3 +48,13 @@ def server_binary() -> str:
 
 def server_dev_script() -> str:
     return os.path.join(app_dir(), "winkeycheck", "server.py")
+
+
+def build_id() -> str:
+    for base in (resource_path("vault_build.txt"), os.path.join(app_dir(), "vault_build.txt")):
+        try:
+            if os.path.isfile(base):
+                return open(base, encoding="utf-8").read().strip()
+        except Exception:
+            pass
+    return "dev"

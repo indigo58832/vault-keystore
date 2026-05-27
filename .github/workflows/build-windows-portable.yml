@@ -30,6 +30,7 @@ jobs:
           img = Image.open("keystore/icons/logos/logo1_v_minimal.png").convert("RGBA")
           img.save("vault.ico", sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)])
           PY
+          echo "build=${GITHUB_RUN_ID}-${GITHUB_SHA::7}" > vault_build.txt
 
       - name: Build Vault.exe (GUI + встроенный сервер проверки)
         shell: bash
@@ -52,12 +53,14 @@ jobs:
             --add-data "winkeycheck/pidgenx;pidgenx" \
             --add-data "winkeycheck/licensing_stuff;licensing_stuff" \
             --add-data "winkeycheck/pkeyconfig.xrm-ms;." \
+            --add-data "vault_build.txt;." \
             vault_app_entry.py
 
       - name: Smoke test pkeyconfigs in Vault.exe
         shell: bash
         run: |
           ./dist/Vault.exe --self-test-pkeyconfigs
+          ./dist/Vault.exe --diagnose
 
       - name: Assemble portable bundle
         shell: bash
@@ -65,6 +68,7 @@ jobs:
           mkdir -p out/VaultPortable
           cp dist/Vault.exe out/VaultPortable/
           cp packaging/windows/README.txt out/VaultPortable/
+          cp packaging/windows/Diagnose.bat out/VaultPortable/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

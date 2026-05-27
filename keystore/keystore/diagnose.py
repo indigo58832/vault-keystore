@@ -1,0 +1,73 @@
+"""Диагностика Vault/winkeycheck для отладки Windows-сборки."""
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+from .checker import CheckerClient
+from . import paths
+
+
+def share_dir() -> str:
+    return os.path.expanduser("~/.local/share/keystore")
+
+
+def diagnose_path() -> str:
+    return os.path.join(share_dir(), "vault_diagnose.json")
+
+
+def collect() -> dict:
+    try:
+        from winkeycheck.check import load_all_pkeyconfigs, _bundle_roots
+    except ImportError:
+        sys.path.insert(0, paths.app_dir())
+        from winkeycheck.check import load_all_pkeyconfigs, _bundle_roots
+    roots = _bundle_roots()
+    local_n = len(load_all_pkeyconfigs())
+    info = CheckerClient().health_info()
+
+    return {
+        "build_id": paths.build_id(),
+        "frozen": paths.is_frozen(),
+        "platform": sys.platform,
+        "executable": sys.executable,
+        "app_dir": paths.app_dir(),
+        "meipass": getattr(sys, "_MEIPASS", None),
+        "bundle_roots": roots,
+        "pkeyconfigs_local": local_n,
+        "health": info,
+        "legacy_server_binary": paths.server_binary(),
+        "legacy_server_exists": os.path.isfile(paths.server_binary()),
+    }
+
+
+def write_report() -> str:
+    os.makedirs(share_dir(), exist_ok=True)
+    data = collect()
+    path = diagnose_path()
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return path
+
+
+def run_cli() -> int:
+    import tempfile
+
+    from .server_boot import ensure_checker_server_running
+
+    ensure_checker_server_running(
+        server_binary=paths.server_binary(),
+        server_dev_script=paths.server_dev_script(),
+        log_file=os.path.join(tempfile.gettempdir(), "winkeycheck.log"),
+        is_frozen=paths.is_frozen(),
+    )
+    path = write_report()
+    data = collect()
+    print(path)
+    print(f"build_id={data.get('build_id')}")
+    print(f"pkeyconfigs_local={data.get('pkeyconfigs_local')}")
+    print(f"health={data.get('health')}")
+    if not data.get("health") or int((data.get("health") or {}).get("pkeyconfigs_loaded") or 0) < 1:
+        return 1
+    return 0

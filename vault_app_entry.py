@@ -27,6 +27,10 @@ def main() -> None:
     if "--self-test-pkeyconfigs" in sys.argv:
         self_test_pkeyconfigs()
         return
+    if "--diagnose" in sys.argv:
+        sys.path.insert(0, os.path.join(HERE, "keystore"))
+        from keystore.diagnose import run_cli
+        sys.exit(run_cli())
     if "--quick-check" in sys.argv:
         sys.argv = [arg for arg in sys.argv if arg != "--quick-check"]
         quick_check_main()

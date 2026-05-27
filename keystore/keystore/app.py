@@ -126,8 +126,30 @@ def _remove_quick_check_pid():
         pass
 
 
+_quick_check_window = None
+
+
 def toggle_quick_check() -> bool:
-    """Открыть/закрыть окно быстрой проверки отдельным процессом."""
+    """Открыть/закрыть окно быстрой проверки.
+    Frozen (Windows portable): в том же процессе — не убиваем сервер на :17777.
+    Dev/Linux: отдельный процесс как раньше.
+    """
+    global _quick_check_window
+
+    if paths.is_frozen():
+        from .quick_check import QuickCheckWindow
+
+        if _quick_check_window is not None and _quick_check_window.isVisible():
+            _quick_check_window.close()
+            _quick_check_window = None
+            return False
+        if _quick_check_window is None:
+            _quick_check_window = QuickCheckWindow()
+        _quick_check_window.showNormal()
+        _quick_check_window.raise_()
+        _quick_check_window.activateWindow()
+        return True
+
     old_pid = _read_quick_check_pid()
     if old_pid and _pid_alive(old_pid):
         try:
@@ -181,6 +203,12 @@ def main():
 
     server_ok = ensure_checker_server_running()
 
+    try:
+        from .diagnose import write_report
+        write_report()
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # окно можно закрыть, программа жива в трее
 
@@ -198,6 +226,9 @@ def main():
 
     win = MainWindow()
     win.setWindowIcon(icon)
+    bid = paths.build_id()
+    if bid and bid != "dev":
+        win.setWindowTitle(f"Vault  [{bid}]")
 
     def show_window():
         win.showNormal()

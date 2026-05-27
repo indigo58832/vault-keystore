@@ -26,6 +26,7 @@ from keystore.checker import CheckerClient
 from keystore.app import ICON_PATH, ensure_checker_server_running
 from keystore.db import DB
 from keystore import policy
+from keystore import paths
 
 KEY_RE = re.compile(r"[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}")
 
@@ -220,7 +221,7 @@ def render_replacement(dead_result: dict, alive_result: dict, repl_key: str) -> 
 class QuickCheckWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Vault — быстрая проверка")
+        self.setWindowTitle(f"Vault — быстрая проверка  [{paths.build_id()}]")
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.resize(460, 380)
         if os.path.exists(ICON_PATH):
@@ -281,12 +282,28 @@ class QuickCheckWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._do_check)
         QShortcut(QKeySequence("Escape"), self, activated=self.close)
 
+        self._refresh_server_hint()
+
         # Приоритет — выделенный текст (X11 PRIMARY)
         sel = get_x11_selection()
         if sel:
             self.input.setPlainText(sel)
             if KEY_RE.search(sel.upper()):
                 QTimer.singleShot(100, self._do_check)
+
+    def _refresh_server_hint(self):
+        info = CheckerClient().health_info() or {}
+        n = int(info.get("pkeyconfigs_loaded") or 0)
+        if n > 0:
+            self.status.setText(f"Сервер OK, pkeyconfig: {n}")
+            self.status.setStyleSheet("color:#4ade80; font-size:12px;")
+        else:
+            roots = info.get("bundle_roots") or []
+            self.status.setText(
+                f"Сервер без pkeyconfig (0). build={paths.build_id()} "
+                f"roots={roots!r}"
+            )
+            self.status.setStyleSheet("color:#fbbf24; font-size:12px;")
 
     def _do_check(self):
         text = self.input.toPlainText()
@@ -350,7 +367,7 @@ class QuickCheckWindow(QWidget):
 
 def main():
     ensure_checker_server_running()
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     win = QuickCheckWindow()
     win.show()
     win.raise_()
