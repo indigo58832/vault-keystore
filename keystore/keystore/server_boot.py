@@ -83,9 +83,14 @@ def start_embedded_server(port: int = CHECKER_PORT) -> bool:
         if _embedded_http_server is not None:
             return _server_ready()[0]
         try:
-            from winkeycheck.server import create_server
+            from winkeycheck.server import create_server, get_pkcs
         except ImportError:
             return False
+        # Прогрев pkeyconfig в этом процессе до HTTP (см. create_server).
+        try:
+            get_pkcs()
+        except Exception:
+            pass
         srv = create_server("127.0.0.1", port)
         thread = threading.Thread(target=srv.serve_forever, daemon=True, name="winkeycheck")
         thread.start()

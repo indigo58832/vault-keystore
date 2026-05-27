@@ -36,6 +36,15 @@ def collect(*, load_local_pkcs: bool = True) -> dict:
         roots = _bundle_roots()
         local_n = len(load_all_pkeyconfigs())
     info = CheckerClient().health_info()
+    server_note = None
+    if info is None:
+        server_note = (
+            "Сервер :17777 не ответил (health=null). "
+            "Часто это таймаут при первой загрузке pkeyconfig — перезапустите Vault "
+            "и подождите 2 мин, или запустите Diagnose.bat после старта Vault."
+        )
+    elif int(info.get("pkeyconfigs_loaded") or 0) < 1:
+        server_note = "Сервер отвечает, но pkeyconfig_loaded=0."
 
     return {
         "build_id": paths.build_id(),
@@ -47,6 +56,7 @@ def collect(*, load_local_pkcs: bool = True) -> dict:
         "bundle_roots": roots,
         "pkeyconfigs_local": local_n,
         "health": info,
+        "server_note": server_note,
         "legacy_server_binary": paths.server_binary(),
         "legacy_server_exists": os.path.isfile(paths.server_binary()),
         "report_paths": report_paths(),

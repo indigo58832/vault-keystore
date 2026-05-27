@@ -77,6 +77,15 @@ class CheckWorker(QThread):
     def run(self):
         # SQLite connection должен жить в том же потоке где используется.
         self.db = DB()
+        if not self.client.wait_until_ready(180.0):
+            err = (
+                "Сервер проверки не готов (нет ответа /health или 0 pkeyconfig). "
+                "Подождите 1–2 мин после запуска Vault или запустите Diagnose.bat."
+            )
+            for k in self.keys:
+                self.one_done.emit({"key": k, "ok": False, "error": err}, {})
+            self.finished_all.emit()
+            return
         for k in self.keys:
             existing = self.db.get_key_by_string(k)
 

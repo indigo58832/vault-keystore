@@ -1,7 +1,15 @@
 """Клиент к локальному winkeycheck-серверу (тот же что использует Chrome-расширение)."""
+import sys
+import time
+
 import requests
 
 DEFAULT_SERVER = "http://127.0.0.1:17777"
+
+
+def _health_timeout_sec() -> float:
+    # Первая загрузка pkeyconfig в onefile может занять минуту+.
+    return 120.0 if getattr(sys, "frozen", False) else 5.0
 
 
 class CheckerClient:
@@ -10,7 +18,10 @@ class CheckerClient:
 
     def health_info(self) -> dict | None:
         try:
-            r = requests.get(f"{self.base_url}/health", timeout=2)
+            r = requests.get(
+                f"{self.base_url}/health",
+                timeout=_health_timeout_sec(),
+            )
             if not r.ok:
                 return None
             return r.json()
@@ -23,6 +34,15 @@ class CheckerClient:
             return False
         n = int(info.get("pkeyconfigs_loaded") or 0)
         return bool(info.get("ok")) and n > 0
+
+    def wait_until_ready(self, timeout_sec: float = 180.0) -> dict | None:
+        deadline = time.time() + timeout_sec
+        while time.time() < deadline:
+            info = self.health_info()
+            if info and int(info.get("pkeyconfigs_loaded") or 0) > 0 and info.get("ok"):
+                return info
+            time.sleep(0.5)
+        return None
 
     def check(self, key: str, *, online: bool = True, mak_count: bool = True,
               consume: bool = False, allow_consume_retail: bool = False) -> dict:

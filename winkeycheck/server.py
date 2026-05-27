@@ -130,6 +130,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def create_server(bind: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
+    # Прогрев до accept(): иначе /health с timeout=2с в GUI не дождётся загрузки 80 pkeyconfig.
+    get_pkcs()
     return ThreadingHTTPServer((bind, port), Handler)
 
 
