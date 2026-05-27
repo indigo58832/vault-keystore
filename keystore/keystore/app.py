@@ -11,17 +11,16 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
 from .main_window import MainWindow
 from . import auto_check
+from . import paths
+from .server_boot import ensure_checker_server_running as boot_checker_server
 
 
-import os as _os
-
-ICON_PATH = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                         "icons", "logos", "logo1_v_minimal.png")
+ICON_PATH = paths.icon_path()
 
 
 def make_tray_icon(size: int = 64) -> QIcon:
     """Иконка Vault — берём готовый PNG со склада."""
-    if _os.path.exists(ICON_PATH):
+    if os.path.exists(ICON_PATH):
         return QIcon(ICON_PATH)
     # fallback — простой квадрат
     pm = QPixmap(size, size)
@@ -61,6 +60,7 @@ def setup_global_hotkey(bridge: HotkeyBridge, combo: str = "<ctrl>+<shift>+s") -
 import tempfile
 VAULT_PID_FILE = os.path.join(tempfile.gettempdir(), "vault.pid")
 QUICK_CHECK_PID_FILE = os.path.join(tempfile.gettempdir(), "vault_quick_check.pid")
+CHECKER_LOG_FILE = os.path.join(tempfile.gettempdir(), "winkeycheck.log")
 
 
 def _already_running() -> bool:
@@ -142,7 +142,7 @@ def toggle_quick_check() -> bool:
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
         "stdin": subprocess.DEVNULL,
-        "cwd": _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+        "cwd": paths.app_dir(),
     }
     if os.name == "nt":
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
@@ -159,6 +159,15 @@ def toggle_quick_check() -> bool:
     return True
 
 
+def ensure_checker_server_running() -> bool:
+    return boot_checker_server(
+        server_binary=paths.server_binary(),
+        server_dev_script=paths.server_dev_script(),
+        log_file=CHECKER_LOG_FILE,
+        is_frozen=paths.is_frozen(),
+    )
+
+
 def main():
     # Single-instance: если Vault уже запущен — молча выходим.
     # Чтобы открыть окно — пользователь использует трей или хоткей.
@@ -169,6 +178,8 @@ def main():
 
     # Ctrl-C в терминале закрывает приложение
     signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    server_ok = ensure_checker_server_running()
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # окно можно закрыть, программа жива в трее
@@ -249,6 +260,15 @@ def main():
     tray.setContextMenu(menu)
     tray.activated.connect(lambda reason: show_window() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
     tray.show()
+
+    if not server_ok:
+        tray.showMessage(
+            "Vault",
+            "Сервер проверки ключей не запустился (:17777). "
+            "Проверка и Quick Check работать не будут.",
+            QSystemTrayIcon.MessageIcon.Critical,
+            8000,
+        )
 
     # global hotkey
     bridge = HotkeyBridge()

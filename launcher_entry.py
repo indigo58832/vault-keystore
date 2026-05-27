@@ -16,6 +16,10 @@ def app_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
+def binary_name(stem: str) -> str:
+    return f"{stem}.exe" if os.name == "nt" else stem
+
+
 def wait_server(port: int, timeout_sec: float = 15.0) -> bool:
     deadline = time.time() + timeout_sec
     url = f"http://127.0.0.1:{port}/health"
@@ -35,8 +39,8 @@ def show_error(text: str) -> None:
 
 def main() -> int:
     root = app_dir()
-    vault_exe = root / "Vault.exe"
-    server_exe = root / "KeyCheckerServer.exe"
+    vault_exe = root / binary_name("Vault")
+    server_exe = root / binary_name("KeyCheckerServer")
     port = 17777
 
     if not vault_exe.exists():
@@ -48,19 +52,24 @@ def main() -> int:
 
     creationflags = 0
     startupinfo = None
+    popen_kwargs: dict = {
+        "cwd": root,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "stdin": subprocess.DEVNULL,
+    }
     if os.name == "nt":
         creationflags = subprocess.CREATE_NO_WINDOW
         startupinfo = subprocess.STARTUPINFO()
         startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    else:
+        popen_kwargs["start_new_session"] = True
 
     server_proc = subprocess.Popen(
         [str(server_exe), "--port", str(port)],
-        cwd=root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
         creationflags=creationflags,
         startupinfo=startupinfo,
+        **popen_kwargs,
     )
 
     if not wait_server(port):

@@ -31,7 +31,7 @@ jobs:
           img.save("vault.ico", sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)])
           PY
 
-      - name: Build Vault.exe
+      - name: Build Vault.exe (GUI + встроенный сервер проверки)
         shell: bash
         run: |
           pyinstaller \
@@ -46,44 +46,20 @@ jobs:
             --hidden-import pynput.keyboard._win32 \
             --hidden-import pynput.mouse._win32 \
             --collect-submodules keystore \
-            --add-data "keystore/icons;icons" \
-            vault_app_entry.py
-
-      - name: Build KeyCheckerServer.exe
-        shell: bash
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --console \
-            --onefile \
-            --name KeyCheckerServer \
-            --paths . \
             --collect-submodules winkeycheck \
+            --collect-all PyQt6 \
+            --add-data "keystore/icons;icons" \
             --add-data "winkeycheck/pidgenx;pidgenx" \
             --add-data "winkeycheck/licensing_stuff;licensing_stuff" \
             --add-data "winkeycheck/pkeyconfig.xrm-ms;." \
-            server_entry.py
-
-      - name: Build VaultLauncher.exe
-        shell: bash
-        run: |
-          pyinstaller \
-            --noconfirm \
-            --clean \
-            --windowed \
-            --onefile \
-            --name VaultLauncher \
-            --icon vault.ico \
-            launcher_entry.py
+            vault_app_entry.py
 
       - name: Assemble portable bundle
         shell: bash
         run: |
           mkdir -p out/VaultPortable
-          cp dist/VaultLauncher.exe out/VaultPortable/
           cp dist/Vault.exe out/VaultPortable/
-          cp dist/KeyCheckerServer.exe out/VaultPortable/
+          cp packaging/windows/README.txt out/VaultPortable/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

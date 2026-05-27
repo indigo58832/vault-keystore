@@ -8,18 +8,31 @@ import sys, os, glob, subprocess, argparse, xml.etree.ElementTree as ET
 import hmac, hashlib, base64, html, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from licensing_stuff.keycutter import ProductKeyDecoder
-from licensing_stuff.pkeyconfig import PKeyConfig
-from . import keycheck as kc
+try:
+    from .licensing_stuff.keycutter import ProductKeyDecoder
+    from .licensing_stuff.pkeyconfig import PKeyConfig
+    from . import keycheck as kc
+except ImportError:
+    from licensing_stuff.keycutter import ProductKeyDecoder
+    from licensing_stuff.pkeyconfig import PKeyConfig
+    import keycheck as kc
 import requests, urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+
+def _bundle_root() -> str:
+    if getattr(sys, "frozen", False):
+        return getattr(sys, "_MEIPASS", HERE)
+    return HERE
+
+
+BUNDLE_ROOT = _bundle_root()
+
 # pidgenx tooling: pidgenx_caller.exe + pidgenx.dll + pkeyconfig.xrm-ms
-# По умолчанию ищем подпапку pidgenx/ рядом со скриптом.
-# На Linux запуск через Wine, на Windows — напрямую.
-PIDGENX_TOOLS_DIR = os.environ.get("PIDGENX_TOOLS_DIR") or os.path.join(HERE, "pidgenx")
+# В PyInstaller-сборке лежит в корне bundle (_MEIPASS/pidgenx).
+PIDGENX_TOOLS_DIR = os.environ.get("PIDGENX_TOOLS_DIR") or os.path.join(BUNDLE_ROOT, "pidgenx")
 WINE_PREFIX = os.path.expanduser("~/.wine32")
 IS_WINDOWS = sys.platform.startswith("win")
 
@@ -145,8 +158,9 @@ def hresult_human(code: str, fallback_msg: str) -> str:
 def load_all_pkeyconfigs():
     """Загружает основной pkeyconfig + все из licensing_stuff/pkeyconfigs/.
     Возвращает список (label, PKeyConfig, путь)."""
-    paths = [(os.path.basename(HERE), os.path.join(HERE, "pkeyconfig.xrm-ms"))]
-    bundle = os.path.join(HERE, "licensing_stuff", "pkeyconfigs")
+    root = BUNDLE_ROOT
+    paths = [(os.path.basename(root), os.path.join(root, "pkeyconfig.xrm-ms"))]
+    bundle = os.path.join(root, "licensing_stuff", "pkeyconfigs")
     for p in sorted(glob.glob(os.path.join(bundle, "**", "*.xrm-ms"), recursive=True)):
         label = os.path.relpath(p, bundle).replace(os.sep, "/")
         paths.append((label, p))

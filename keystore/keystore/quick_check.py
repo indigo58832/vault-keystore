@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
 )
 
 from keystore.checker import CheckerClient
-from keystore.app import ICON_PATH
+from keystore.app import ICON_PATH, ensure_checker_server_running
 from keystore.db import DB
 from keystore import policy
 
@@ -349,6 +349,7 @@ class QuickCheckWindow(QWidget):
 
 
 def main():
+    ensure_checker_server_running()
     app = QApplication(sys.argv)
     win = QuickCheckWindow()
     win.show()

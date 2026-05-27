@@ -18,7 +18,10 @@ import sys, os, json, argparse, threading, traceback
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from .check import check_key, load_all_pkeyconfigs
+try:
+    from .check import check_key, load_all_pkeyconfigs
+except ImportError:
+    from check import check_key, load_all_pkeyconfigs
 
 # Загружаем pkeyconfig'и один раз при старте — медленная операция
 print("Loading pkeyconfigs...", file=sys.stderr)

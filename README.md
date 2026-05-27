@@ -13,7 +13,17 @@
 
 ## Установка
 
-### Linux
+### Linux (portable, без Python)
+
+Сборка через GitHub Actions (как Windows `.exe`):
+
+1. Открой репозиторий на GitHub → **Actions** → **Build Linux portable** → **Run workflow**.
+2. Скачай артефакт `VaultPortable-linux` (архив `.tar.gz`).
+3. Распакуй и запусти `./VaultLauncher`.
+
+Нужны на машине: **Wine 32-bit** (`wine32`, prefix `~/.wine32`), **xclip**, для hotkey иногда **wmctrl**. Подробности — `packaging/linux/README.txt` в архиве.
+
+### Linux (из исходников, как на скриншоте)
 
 ```bash
 # 1. Зависимости системы
@@ -41,15 +51,23 @@ cd ../keystore && ./start.sh
 
 ### Windows
 
+**Portable (один файл, как «один клик» на Linux):**
+
+1. GitHub → **Actions** → **Build Windows portable** → скачать артефакт.
+2. Распаковать — внутри только **`Vault.exe`** (+ README).
+3. Двойной клик по `Vault.exe`. Сервер проверки стартует сам, Wine не нужен.
+4. Базу с Linux: скопировать `keys.db` в `%USERPROFILE%\.local\share\keystore\`.
+
+**Из исходников:**
+
 1. **Поставь Python 3.11+**: https://www.python.org/downloads/  
    ВАЖНО: при установке поставь галку «Add Python to PATH».
-2. **Скачай наш репо**: «Code → Download ZIP» на GitHub, распакуй в `C:\work_tool`.
-3. **Также скачай winkeycheck**: https://github.com/WitherOrNot/winkeycheck — нужны файлы из этого репо в подпапке `winkeycheck\` рядом с `keystore\`.
-4. **Запусти `keystore\install.bat`** — поставит PyQt6, requests, pynput.
-5. **Запусти сервер**: двойной клик `winkeycheck\start.bat` — откроется окно с логами, **не закрывай**.
-6. **Запусти Vault**: двойной клик `keystore\start.bat` — появится иконка в трее.
+2. **Скачай репо** в `C:\work_tool` (или клонируй).
+3. **Запусти `keystore\install.bat`** — PyQt6, requests, pynput.
+4. **Запусти Vault**: `keystore\start.bat` — сервер поднимется автоматически (как на Linux).
 
-> На Windows Wine не нужен — `pidgenx_caller.exe` запускается напрямую.
+> Старые сборки с тремя файлами (`VaultLauncher.exe` + `KeyCheckerServer.exe`) устарели.
+> Если проверка не работала — пересобери через Actions и используй один `Vault.exe`.
 
 ---
 

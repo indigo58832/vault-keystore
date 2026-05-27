@@ -1,0 +1,92 @@
+name: Build Linux portable
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxcb-cursor0 libxcb-xinerama0 libxkbcommon-x11-0 \
+            libegl1 libgl1 libglib2.0-0 libdbus-1-3 libx11-xcb1
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller PyQt6 requests pynput urllib3 pillow
+
+      - name: Build Vault
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --onefile \
+            --name Vault \
+            --paths keystore \
+            --paths . \
+            --hidden-import pynput.keyboard._xorg \
+            --hidden-import pynput.mouse._xorg \
+            --collect-submodules keystore \
+            --collect-all PyQt6 \
+            --add-data "keystore/icons:icons" \
+            vault_app_entry.py
+
+      - name: Build KeyCheckerServer
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --console \
+            --onefile \
+            --name KeyCheckerServer \
+            --paths . \
+            --collect-submodules winkeycheck \
+            --add-data "winkeycheck/pidgenx:pidgenx" \
+            --add-data "winkeycheck/licensing_stuff:licensing_stuff" \
+            --add-data "winkeycheck/pkeyconfig.xrm-ms:." \
+            server_entry.py
+
+      - name: Build VaultLauncher
+        run: |
+          pyinstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --onefile \
+            --name VaultLauncher \
+            --paths keystore \
+            --paths . \
+            --collect-all PyQt6 \
+            launcher_entry.py
+
+      - name: Assemble portable bundle
+        run: |
+          mkdir -p out/VaultPortable
+          cp dist/VaultLauncher out/VaultPortable/
+          cp dist/Vault out/VaultPortable/
+          cp dist/KeyCheckerServer out/VaultPortable/
+          cp packaging/linux/README.txt out/VaultPortable/
+          chmod +x out/VaultPortable/VaultLauncher out/VaultPortable/Vault out/VaultPortable/KeyCheckerServer
+          tar -czf out/VaultPortable-linux.tar.gz -C out VaultPortable
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VaultPortable-linux
+          path: |
+            out/VaultPortable
+            out/VaultPortable-linux.tar.gz
