@@ -8,12 +8,18 @@ class CheckerClient:
     def __init__(self, base_url: str = DEFAULT_SERVER):
         self.base_url = base_url.rstrip("/")
 
-    def health(self) -> bool:
+    def health_info(self) -> dict | None:
         try:
             r = requests.get(f"{self.base_url}/health", timeout=2)
-            return r.ok and r.json().get("ok")
+            if not r.ok:
+                return None
+            return r.json()
         except Exception:
-            return False
+            return None
+
+    def health(self) -> bool:
+        info = self.health_info()
+        return bool(info and info.get("ok"))
 
     def check(self, key: str, *, online: bool = True, mak_count: bool = True,
               consume: bool = False, allow_consume_retail: bool = False) -> dict:

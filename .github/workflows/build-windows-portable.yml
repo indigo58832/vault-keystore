@@ -54,6 +54,11 @@ jobs:
             --add-data "winkeycheck/pkeyconfig.xrm-ms;." \
             vault_app_entry.py
 
+      - name: Smoke test pkeyconfigs in Vault.exe
+        shell: bash
+        run: |
+          ./dist/Vault.exe --self-test-pkeyconfigs
+
       - name: Assemble portable bundle
         shell: bash
         run: |

@@ -22,17 +22,41 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _bundle_root() -> str:
+def _bundle_roots() -> list[str]:
+    """Кандидаты корня данных: PyInstaller (_MEIPASS) и dev (winkeycheck/)."""
+    roots: list[str] = []
     if getattr(sys, "frozen", False):
-        return getattr(sys, "_MEIPASS", HERE)
-    return HERE
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass:
+            roots.append(meipass)
+            nested = os.path.join(meipass, "winkeycheck")
+            if os.path.isdir(nested):
+                roots.append(nested)
+    roots.append(HERE)
+    seen: set[str] = set()
+    out: list[str] = []
+    for root in roots:
+        norm = os.path.normpath(root)
+        if norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+    return out
 
 
-BUNDLE_ROOT = _bundle_root()
+def _bundle_root() -> str:
+    return _bundle_roots()[0]
 
-# pidgenx tooling: pidgenx_caller.exe + pidgenx.dll + pkeyconfig.xrm-ms
-# В PyInstaller-сборке лежит в корне bundle (_MEIPASS/pidgenx).
-PIDGENX_TOOLS_DIR = os.environ.get("PIDGENX_TOOLS_DIR") or os.path.join(BUNDLE_ROOT, "pidgenx")
+
+def _pidgenx_tools_dir() -> str:
+    if os.environ.get("PIDGENX_TOOLS_DIR"):
+        return os.environ["PIDGENX_TOOLS_DIR"]
+    for root in _bundle_roots():
+        candidate = os.path.join(root, "pidgenx")
+        if os.path.isdir(candidate):
+            return candidate
+    return os.path.join(_bundle_root(), "pidgenx")
+
+
 WINE_PREFIX = os.path.expanduser("~/.wine32")
 IS_WINDOWS = sys.platform.startswith("win")
 
@@ -50,13 +74,14 @@ def run_pidgenx(key: str, pkeyconfig_path: str | None = None) -> dict:
     Если pkeyconfig_path не указан — используется дефолтный (Windows).
     Чтобы pidgenx справился с Office 2024 ключом — нужен Office pkeyconfig.
     """
-    exe = os.path.join(PIDGENX_TOOLS_DIR, "pidgenx_caller.exe")
-    pkc = pkeyconfig_path or os.path.join(PIDGENX_TOOLS_DIR, "pkeyconfig.xrm-ms")
+    exe = os.path.join(_pidgenx_tools_dir(), "pidgenx_caller.exe")
+    pkc = pkeyconfig_path or os.path.join(_pidgenx_tools_dir(), "pkeyconfig.xrm-ms")
     if not os.path.exists(exe):
-        return {"error": f"pidgenx_caller.exe not in {PIDGENX_TOOLS_DIR}"}
+        return {"error": f"pidgenx_caller.exe not in {_pidgenx_tools_dir()}"}
     if not os.path.exists(pkc):
         return {"error": f"pkeyconfig not found: {pkc}"}
 
+    tools_dir = _pidgenx_tools_dir()
     env = os.environ.copy()
     try:
         if IS_WINDOWS:
@@ -72,7 +97,7 @@ def run_pidgenx(key: str, pkeyconfig_path: str | None = None) -> dict:
 
         result = subprocess.run(
             cmd,
-            cwd=PIDGENX_TOOLS_DIR,
+            cwd=tools_dir,
             env=env,
             capture_output=True,
             timeout=20,
@@ -158,20 +183,36 @@ def hresult_human(code: str, fallback_msg: str) -> str:
 def load_all_pkeyconfigs():
     """Загружает основной pkeyconfig + все из licensing_stuff/pkeyconfigs/.
     Возвращает список (label, PKeyConfig, путь)."""
-    root = BUNDLE_ROOT
-    paths = [(os.path.basename(root), os.path.join(root, "pkeyconfig.xrm-ms"))]
-    bundle = os.path.join(root, "licensing_stuff", "pkeyconfigs")
-    for p in sorted(glob.glob(os.path.join(bundle, "**", "*.xrm-ms"), recursive=True)):
-        label = os.path.relpath(p, bundle).replace(os.sep, "/")
-        paths.append((label, p))
+    seen_paths: set[str] = set()
+    candidates: list[tuple[str, str]] = []
+    for root in _bundle_roots():
+        main_p = os.path.join(root, "pkeyconfig.xrm-ms")
+        if os.path.isfile(main_p):
+            norm = os.path.normpath(main_p)
+            if norm not in seen_paths:
+                candidates.append((os.path.basename(root) or "root", norm))
+                seen_paths.add(norm)
+        bundle = os.path.join(root, "licensing_stuff", "pkeyconfigs")
+        if os.path.isdir(bundle):
+            for p in sorted(glob.glob(os.path.join(bundle, "**", "*.xrm-ms"), recursive=True)):
+                norm = os.path.normpath(p)
+                if norm in seen_paths:
+                    continue
+                label = os.path.relpath(norm, bundle).replace(os.sep, "/")
+                candidates.append((label, norm))
+                seen_paths.add(norm)
 
     out = []
-    for label, p in paths:
+    for label, p in candidates:
         try:
             with open(p, encoding="utf-8-sig") as f:
                 out.append((label, PKeyConfig(ET.fromstring(f.read())), p))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"WARN pkeyconfig skip {label}: {e}", file=sys.stderr)
+    if not out:
+        print(f"ERROR: no pkeyconfigs loaded; roots={_bundle_roots()}", file=sys.stderr)
+    else:
+        print(f"Loaded {len(out)} pkeyconfigs from {len(candidates)} files.", file=sys.stderr)
     return out
 
 

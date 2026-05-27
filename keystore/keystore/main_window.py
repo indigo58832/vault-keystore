@@ -962,11 +962,19 @@ class MainWindow(QMainWindow):
 
     # ----- сервер -----
     def _poll_server(self):
-        ok = self.client.health()
+        info = self.client.health_info()
+        ok = bool(info and info.get("ok"))
+        n = int((info or {}).get("pkeyconfigs_loaded") or 0)
         if ok:
             self.server_dot.setStyleSheet("color: #4ade80;")
             self.server_dot.setText("● сервер")
-            self.server_dot.setToolTip("Сервер winkeycheck на связи")
+            self.server_dot.setToolTip(f"Сервер winkeycheck на связи ({n} pkeyconfig)")
+        elif info is not None and n == 0:
+            self.server_dot.setStyleSheet("color: #fbbf24;")
+            self.server_dot.setText("● сервер")
+            self.server_dot.setToolTip(
+                "Сервер отвечает, но pkeyconfig не загружены — проверка ключей не работает"
+            )
         else:
             self.server_dot.setStyleSheet("color: #ef4444;")
             self.server_dot.setText("● сервер")

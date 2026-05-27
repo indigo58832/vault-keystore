@@ -23,10 +23,16 @@ try:
 except ImportError:
     from check import check_key, load_all_pkeyconfigs
 
-# Загружаем pkeyconfig'и один раз при старте — медленная операция
-print("Loading pkeyconfigs...", file=sys.stderr)
-PKCS = load_all_pkeyconfigs()
-print(f"Loaded {len(PKCS)} pkeyconfigs.", file=sys.stderr)
+_PKCS_CACHE = None
+
+
+def get_pkcs():
+    global _PKCS_CACHE
+    if _PKCS_CACHE is None or len(_PKCS_CACHE) == 0:
+        print("Loading pkeyconfigs...", file=sys.stderr)
+        _PKCS_CACHE = load_all_pkeyconfigs()
+        print(f"Loaded {len(_PKCS_CACHE)} pkeyconfigs.", file=sys.stderr)
+    return _PKCS_CACHE
 
 # Wine + pidgenx должен быть глобально сериализован — нельзя параллельно вызывать
 WINE_LOCK = threading.Lock()
@@ -68,7 +74,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             if self.path.startswith("/health"):
-                return self._json(200, {"ok": True, "pkeyconfigs_loaded": len(PKCS)})
+                pkcs = get_pkcs()
+                return self._json(200, {
+                    "ok": len(pkcs) > 0,
+                    "pkeyconfigs_loaded": len(pkcs),
+                })
             return self._json(404, {"error": "use POST /check"})
         except BaseException:
             tb = traceback.format_exc()
@@ -100,7 +110,7 @@ class Handler(BaseHTTPRequestHandler):
 
             with WINE_LOCK:
                 try:
-                    result = check_key(key, pkcs=PKCS, **opts)
+                    result = check_key(key, pkcs=get_pkcs(), **opts)
                 except Exception as e:
                     tb = traceback.format_exc()
                     log_error_text(tb)
