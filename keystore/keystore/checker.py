@@ -19,7 +19,10 @@ class CheckerClient:
 
     def health(self) -> bool:
         info = self.health_info()
-        return bool(info and info.get("ok"))
+        if not info:
+            return False
+        n = int(info.get("pkeyconfigs_loaded") or 0)
+        return bool(info.get("ok")) and n > 0
 
     def check(self, key: str, *, online: bool = True, mak_count: bool = True,
               consume: bool = False, allow_consume_retail: bool = False) -> dict:

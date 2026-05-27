@@ -1,4 +1,4 @@
-"""Запуск winkeycheck-сервера: внешний процесс или встроенный поток (один .exe)."""
+"""Запуск winkeycheck-сервера: встроенный поток (один .exe) или dev-режим."""
 from __future__ import annotations
 
 import os
@@ -15,14 +15,62 @@ _embedded_http_server = None
 _embedded_lock = threading.Lock()
 
 
-def _wait_health(timeout_sec: float) -> bool:
-    client = CheckerClient()
+def _server_ready() -> tuple[bool, dict | None]:
+    info = CheckerClient().health_info()
+    if not info:
+        return False, info
+    n = int(info.get("pkeyconfigs_loaded") or 0)
+    return bool(info.get("ok")) and n > 0, info
+
+
+def _wait_ready(timeout_sec: float) -> bool:
     deadline = time.time() + timeout_sec
     while time.time() < deadline:
-        if client.health():
+        ready, _ = _server_ready()
+        if ready:
             return True
         time.sleep(0.25)
     return False
+
+
+def _free_port(port: int) -> None:
+    """Освободить порт от старого KeyCheckerServer / зависшего Vault."""
+    if os.name == "nt":
+        try:
+            r = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            pids: set[str] = set()
+            for line in (r.stdout or "").splitlines():
+                if f":{port}" not in line or "LISTENING" not in line.upper():
+                    continue
+                parts = line.split()
+                if parts and parts[-1].isdigit():
+                    pids.add(parts[-1])
+            for pid in pids:
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", pid],
+                    capture_output=True,
+                    timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+        except Exception:
+            pass
+        return
+
+    for cmd in (
+        ["fuser", "-k", f"{port}/tcp"],
+        ["sh", "-c", f"ss -lptn 'sport = :{port}' | sed -n 's/.*pid=\\([0-9]*\\).*/\\1/p' | xargs -r kill"],
+    ):
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=10)
+            return
+        except Exception:
+            continue
 
 
 def start_embedded_server(port: int = CHECKER_PORT) -> bool:
@@ -30,7 +78,7 @@ def start_embedded_server(port: int = CHECKER_PORT) -> bool:
     global _embedded_http_server
     with _embedded_lock:
         if _embedded_http_server is not None:
-            return True
+            return _server_ready()[0]
         try:
             from winkeycheck.server import create_server
         except ImportError:
@@ -39,7 +87,8 @@ def start_embedded_server(port: int = CHECKER_PORT) -> bool:
         thread = threading.Thread(target=srv.serve_forever, daemon=True, name="winkeycheck")
         thread.start()
         _embedded_http_server = srv
-    return _wait_health(120.0 if getattr(sys, "frozen", False) else 30.0)
+    timeout = 120.0 if getattr(sys, "frozen", False) else 30.0
+    return _wait_ready(timeout)
 
 
 def start_external_server(
@@ -69,7 +118,7 @@ def start_external_server(
         popen_kwargs["start_new_session"] = True
 
     subprocess.Popen(cmd, creationflags=creationflags, **popen_kwargs)
-    return _wait_health(timeout_sec)
+    return _wait_ready(timeout_sec)
 
 
 def ensure_checker_server_running(
@@ -79,13 +128,21 @@ def ensure_checker_server_running(
     log_file: str,
     is_frozen: bool,
 ) -> bool:
-    """Сервер на :17777: уже живой → внешний exe → python server.py → встроенный поток."""
-    if _wait_health(0.5):
+    """Сервер на :17777 с загруженными pkeyconfig (не пустой health)."""
+    ready, _ = _server_ready()
+    if ready:
         return True
+
+    # Старый KeyCheckerServer на порту без pkeyconfig — убрать и поднять заново.
+    _free_port(CHECKER_PORT)
 
     timeout = 45.0 if is_frozen else 12.0
 
-    if is_frozen and os.path.isfile(server_binary):
+    # Portable Windows: только встроенный сервер (данные внутри Vault.exe).
+    if is_frozen:
+        return start_embedded_server(CHECKER_PORT)
+
+    if os.path.isfile(server_binary):
         if start_external_server(
             [server_binary, "--port", str(CHECKER_PORT)],
             cwd=os.path.dirname(server_binary),

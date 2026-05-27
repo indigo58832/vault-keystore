@@ -75,9 +75,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if self.path.startswith("/health"):
                 pkcs = get_pkcs()
+                try:
+                    from winkeycheck.check import _bundle_roots
+                except ImportError:
+                    from check import _bundle_roots
                 return self._json(200, {
                     "ok": len(pkcs) > 0,
                     "pkeyconfigs_loaded": len(pkcs),
+                    "bundle_roots": _bundle_roots(),
+                    "frozen": bool(getattr(sys, "frozen", False)),
                 })
             return self._json(404, {"error": "use POST /check"})
         except BaseException:

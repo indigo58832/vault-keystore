@@ -277,7 +277,16 @@ def check_key(key: str, pkcs=None, do_online=True, do_consume=False, do_mak_coun
         return out
 
     if not local:
-        out["error"] = "ключ не подходит ни к одной группе ни в одном pkeyconfig"
+        if not pkcs:
+            out["error"] = (
+                "сервер не загрузил pkeyconfig (0 конфигов). "
+                "Удалите KeyCheckerServer.exe из папки, закройте старый сервер в диспетчере задач, "
+                "перезапустите только Vault.exe"
+            )
+            out["pkeyconfigs_loaded"] = 0
+        else:
+            out["error"] = "ключ не подходит ни к одной группе ни в одном pkeyconfig"
+            out["pkeyconfigs_loaded"] = len(pkcs)
         return out
 
     out["ok"] = True

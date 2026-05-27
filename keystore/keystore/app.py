@@ -269,6 +269,14 @@ def main():
             QSystemTrayIcon.MessageIcon.Critical,
             8000,
         )
+    elif paths.is_frozen() and os.path.isfile(paths.server_binary()):
+        tray.showMessage(
+            "Vault",
+            "Рядом лежит старый KeyCheckerServer.exe — удалите его. "
+            "Нужен только Vault.exe, иначе проверка может не работать.",
+            QSystemTrayIcon.MessageIcon.Warning,
+            10000,
+        )
 
     # global hotkey
     bridge = HotkeyBridge()
