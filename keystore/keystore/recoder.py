@@ -2,15 +2,23 @@
 
 Логика взята из work_tool/generator_key/key_tool.py. Алгоритм:
 - декодируем ключ в (group, serial, security, upgrade, extra)
-- сохраняем нижние 48 бит security
-- генерируем новый верхний counter (5 бит, рандом)
+- сохраняем нижние 45 бит security (подпись)
+- меняем 8-битный counter (биты 45..52) → до 256 визуальных вариантов
 - собираем обратно, пересчитываем CRC checksum
+
+Откат к старой схеме (5 бит @ 48, макс. 31): git revert <этот коммит>.
 """
 from __future__ import annotations
 import random
 from functools import reduce
 
 ALPHABET = "BCDFGHJKMPQRTVWXY2346789"
+
+# PKEY2009 security (53b) = 45b signature + 8b recode counter (bits 45..52)
+SECURITY_SIGNATURE_MASK = 0x1FFFFFFFFFFF
+RECODE_COUNTER_SHIFT = 45
+RECODE_COUNTER_MAX = 0xFF
+RECODE_MAX_UNIQUE = 255
 
 
 def _crc_table():
@@ -76,34 +84,38 @@ def verify(key: str) -> bool:
 
 
 def recode(key: str, *, rng: random.Random | None = None) -> str:
-    """Делает recode: меняет верхние 5 бит counter в security, остальное не трогает.
+    """Меняет 8-битный counter в security; нижние 45 бит не трогает.
     Возвращает визуально другой ключ с тем же group/serial/security_base/upgrade.
-    Для Microsoft activation это **тот же** ключ (по Product ID/Advanced PID)."""
+    Для Microsoft activation это **тот же** ключ (пo Product ID/Advanced PID)."""
     r = rng or random
     f = decode(key)
-    base_security = f["security"] & 0xFFFFFFFFFFFF
-    new_counter = r.randint(0, 0x1F)
-    new_security = (new_counter << 48) | base_security
+    base_security = f["security"] & SECURITY_SIGNATURE_MASK
+    new_counter = r.randint(0, RECODE_COUNTER_MAX)
+    new_security = (new_counter << RECODE_COUNTER_SHIFT) | base_security
     return encode(f["group"], f["serial"], new_security, f["upgrade"], f["extra"])
 
 
 def recode_unique(key: str, count: int) -> list[str]:
     """Возвращает count визуально-разных recode-ключей.
-    Counter имеет всего 5 бит (0..31) → максимум 31 уникальный (минус оригинал).
-    Сам оригинал в результат НЕ включается.
-    """
-    r = random.Random()
+    Counter 8 бит (0..255) → максимум 255 уникальных без оригинала.
+    Перебор детерминированный (не random), чтобы стабильно набрать N вариантов."""
+    f = decode(key)
+    base_security = f["security"] & SECURITY_SIGNATURE_MASK
+    orig_counter = (f["security"] >> RECODE_COUNTER_SHIFT) & RECODE_COUNTER_MAX
     original = key.replace("-", "").upper()
     seen: set[str] = {original}
     out: list[str] = []
-    tries = 0
-    max_unique = 31  # верхняя граница без оригинала
-    while len(out) < min(count, max_unique) and tries < count * 20:
-        tries += 1
-        candidate = recode(key, rng=r)
+    limit = min(count, RECODE_MAX_UNIQUE)
+    for counter in range(RECODE_COUNTER_MAX + 1):
+        if counter == orig_counter:
+            continue
+        new_security = (counter << RECODE_COUNTER_SHIFT) | base_security
+        candidate = encode(f["group"], f["serial"], new_security, f["upgrade"], f["extra"])
         norm = candidate.replace("-", "").upper()
         if norm in seen:
             continue
         seen.add(norm)
         out.append(candidate)
+        if len(out) >= limit:
+            break
     return out

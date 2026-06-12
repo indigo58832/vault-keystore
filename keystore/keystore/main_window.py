@@ -779,8 +779,8 @@ class MainWindow(QMainWindow):
         n, ok = QInputDialog.getInt(
             self, "Дублировать (recode)",
             f"Сколько копий сделать для каждого из {len(items)} ключ(а)?\n"
-            "(максимум 31 — лимит counter в структуре ключа)",
-            value=31, min=1, max=31,
+            "(максимум 255 — 8-битный counter в структуре ключа)",
+            value=5, min=1, max=255,
         )
         if not ok:
             return
